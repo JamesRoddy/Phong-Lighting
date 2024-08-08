@@ -1,0 +1,14 @@
+# version 330 core
+
+
+
+out vec4 fragColour;
+
+uniform vec3 lightingColour;
+
+void main(){
+ 
+ fragColour = vec4(lightingColour,1.0);
+
+
+}

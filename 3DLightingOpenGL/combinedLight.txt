@@ -1,0 +1,201 @@
+
+#version 330 core 
+// using this material object that can be assigned via a uniform it allows us to better simulate the refelctive properties of objects and how they react to light in general 
+// therefore we will be using the ambient, specular, and diffuse vectors to replace some of the hard coded values such as ambientStrength and specularStrength
+
+struct material{
+ sampler2D diffuse;
+ sampler2D specular; 
+ sampler2D emissionMap;
+ float shininess;
+
+};
+
+
+
+struct directionalLight{ // structure for directional light defined as a unfiform with all its attributes being passed into the shader
+     vec3 direction;
+     vec3 ambient; // ensure that object isnt completly dark when it is further away or it is facing away from the light ensuring that it still has some colour 
+     vec3 diffuse; // detemine the colour of the light and the colours that will be reflected 
+     vec3 specular; // determine the colour of the specular light
+
+
+};
+
+struct spotLight{
+   
+  
+   vec3 diffuse;
+   vec3 ambient;
+   vec3 specular;
+   float inner;
+   float outer; 
+   float constant;
+   float linear;
+   float quadratic;
+
+
+
+};
+struct pointLight{ // structure that will be defined as a uniform that will take in all the relevant data associated with a point light 
+
+     vec3 ambient;
+	 float quadratic;
+	 vec3 diffuse;
+	 float linear;
+	 vec3 specular;
+	 float constant;
+	 vec3 position;
+	 
+	
+ 
+ 
+ 
+
+
+};
+
+
+// functions to calculate light intensity for the directional light and the point light 
+vec3 calculateDirectionalLight(directionalLight light, vec3 viewDir,vec3 normal,vec3 textureColour,vec3 specularMap);
+vec3 calculatePointLight(pointLight light, vec3 viewDir,vec3 normal,vec3 fragPos, vec3 lightPosition,vec3 textureColour,vec3 specularMap);
+vec3 calculateSpotLight(spotLight light, vec3 viewDir, vec3 normal, vec3 fragPos,vec3 textureColour, vec3 specularMap);
+out vec4 screenColour; // outputted fragment colour
+
+in vec3 surfaceNormal; // direction of surface
+in vec3 FragPos;
+in vec2 textureCoordinates;
+uniform material objectMaterial;
+
+
+# define fixedLightNumber 4
+# define lightPosSize  5
+
+
+uniform pointLight pointLightProperties; 
+uniform directionalLight directionalLightProperties;
+uniform spotLight spotLightProperties;
+uniform vec3 lightColour;  
+uniform int size;
+uniform vec3 camPos;
+uniform vec3 camDir;
+uniform int fixedLightSize;
+uniform float time;
+
+uniform vec3 lightPositions[lightPosSize];
+layout(std140) uniform fixedLights{
+     
+     pointLight lights[fixedLightNumber];
+
+
+};
+void main(){
+  
+
+  vec3 viewDir = normalize(camPos - FragPos); 
+  vec3 normal = normalize(surfaceNormal);  
+  vec3 textureColour = vec3(texture(objectMaterial.diffuse,textureCoordinates));
+  vec3 specularMap =  vec3(texture(objectMaterial.specular,textureCoordinates));
+  vec3 emissionMap = vec3(texture(objectMaterial.emissionMap,textureCoordinates+vec2(0.0f,sin(time) )));
+  vec3 result =  calculateDirectionalLight(directionalLightProperties,viewDir,normal, textureColour,specularMap);
+
+
+  vec3 fade = floor( (vec3(1.0)-specularMap)) *vec3(0.0,0.0,emissionMap.g);
+
+   for(int i = 0; i < lights.length(); i++){
+      result += calculatePointLight(lights[i],viewDir,normal,FragPos,lights[i].position,textureColour,specularMap);
+     
+   }
+
+   
+   result += calculateSpotLight(spotLightProperties,viewDir,normal,FragPos,textureColour,specularMap) ;
+     result += fade;
+   screenColour = vec4(result,1.0);
+  
+  
+}
+
+
+
+vec3 calculatePointLight(pointLight light, vec3 viewDir, vec3 normal,vec3 fragPos,vec3 lightPosition,vec3 textureColour,vec3 specularMap){
+      
+      vec3 ambientScale = light.ambient * textureColour;  // calculate the ambient lighting of the object based on the diffuse map/ texure of the object that was passed into the uniform
+
+      vec3 lightDir = normalize(lightPosition - fragPos);  // calcuate the direction of the point light accoridng to the vector between the current fragement postion and the light 
+      float diffuseScale = max(dot(lightDir,normal),0.0);  /// clauclate the angle between the surface normal and the light direction vector allowing us to determine how coloured and bright and object will be based on the direction it is facing to the light 
+      vec3 diffuseLight = light.diffuse * diffuseScale * textureColour;  // finally clauclate the diffuse light using the objects diffuse map and the diffuse scalar calculated above 
+
+      vec3 reflection  = reflect(-lightDir, normal);  /// this will reflect the light direction vector around the normal meaning that the light direction needs to be negated so that it points from the light position to the fragment  
+      // the formul for reflection is v-2*(v.n)*n 
+      // where v is are light vector being projected onto the normal and then we subtract that vector we gain from the projection multipled by 2 essentiallty creating a new vector pointing from the normal on the opposite side 
+      float specularScale  = pow(max(dot(viewDir,reflection),0.0),objectMaterial.shininess);  // we then culate our speuclar scalar by taking the angle of the reflected vector with the view direction 
+      vec3 specularLight = light.specular * specularScale * specularMap;  // finally we calculate our specular lighting 
+      
+      float distance = length(lightPosition - fragPos); 
+      float attenutaion  = 1.0/(light.constant + light.linear * distance + light.quadratic * (distance * distance)); // this is the main calculation used for attentuaion which is where light fades over distance using both a linear term and this will scale how lighting impacts the object over distance  
+
+      ambientScale *= attenutaion;
+      
+      diffuseLight *= attenutaion;
+      
+      specularLight *= attenutaion;
+      return (ambientScale + diffuseLight + specularLight);  
+  
+
+
+}
+
+
+vec3 calculateDirectionalLight(directionalLight light, vec3 viewDir,vec3 normal,vec3 textureColour,vec3 specularMap){
+     
+     vec3 ambientScale = light.ambient * textureColour ;
+
+     vec3 lightDir = normalize(-light.direction) ; // in this case the light is just a direction vector so we negate and normalize it as our calcuations expect the light dir to point from the fragment position
+ 
+     float diffuseScale = max(dot(normal,lightDir),0.0); 
+     vec3 diffuseLight =  light.diffuse * diffuseScale * textureColour; 
+     
+     vec3 reflection = reflect(lightDir,normal);
+     float specScale = pow(max(dot(viewDir,reflection),0.0),objectMaterial.shininess);
+     vec3 specularLight = light.specular * specScale * specularMap; 
+
+
+     return (ambientScale + diffuseLight + specularLight);
+}
+
+
+vec3 calculateSpotLight(spotLight light, vec3 viewDir, vec3 normal, vec3 fragPos,vec3 textureColour, vec3 specularMap){
+
+  vec3 lightDir = normalize(camPos - fragPos); 
+
+  float angleToView = max(dot(lightDir,normalize(-camDir)),0.0); 
+
+  float overallDifference = light.inner - light.outer; // here we get the total difference between the inner angle and outer angle remebering that with cosine the smaller the angle is the closer it is to 1
+  float currentDifference = angleToView - light.outer;  // get differe ce between the current angleBetween the spotLight direction and the vector between the spot light position and the fragment pos
+  float interpolatedDiff = clamp(currentDifference/overallDifference,0.0,1.0);  // clamp the percentage so it remain between 0 and 1
+
+  vec3 ambient = light.ambient * textureColour; 
+  vec3 surfaceNormal = normalize(normal);
+  float diffuseScalar = max(dot(surfaceNormal,lightDir),0.0); 
+  vec3 diffuseLight = light.diffuse * diffuseScalar * textureColour;
+
+  vec3 reflection = reflect(-lightDir,surfaceNormal); 
+  float specularScalar = pow(max(dot(reflection,viewDir),0.0),objectMaterial.shininess); 
+  vec3 specularLight = light.specular * specularScalar * specularMap;
+  
+  float distance = length(camPos - fragPos); 
+
+  float attenuation = 1.0/(light.constant + light.linear * distance + light.quadratic * (distance * distance));
+
+  diffuseLight *= interpolatedDiff; // as we are viewing the inner cone angle as the highest value in the interpolation and the outer angle of the spot light as the lowest meaning fragments  closer to the outer edge of the spot light will have a more dimly lit appearence and values close to the inner angle will be brighter 
+  specularLight *= interpolatedDiff; 
+  
+  specularLight *= attenuation; 
+  diffuseLight *= attenuation;
+  ambient *= attenuation; 
+
+  return (ambient + diffuseLight + specularLight);
+
+
+
+};

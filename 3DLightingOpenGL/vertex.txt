@@ -1,0 +1,30 @@
+
+# version 330 core 
+
+layout(location = 0) in vec3 vertexPosition;
+layout(location = 1) in vec3 fragmentColour;
+layout(location = 2) in vec3 normal;
+layout(location = 3) in vec2 textCoords;
+
+out vec3 FragPos;
+out vec3 surfaceNormal;
+out vec3 lightPosition;
+out vec2 textureCoordinates;
+
+uniform mat4 model;
+uniform vec3 lightPos;
+uniform mat4 view;
+
+uniform mat4 perspective;
+
+
+void main (){
+  vec4 global = model * vec4(vertexPosition,1.0);
+  lightPosition = lightPos;
+  FragPos = vec3(global);  
+  surfaceNormal = mat3(transpose(inverse(model))) * normal; // here we multiply the normal through what is known as the normal matrix essentially converting the normal to global space allowing us to take into account things such as scaling when  doing lighting calculations 
+  textureCoordinates = textCoords;
+  gl_Position =   perspective * view * global;
+   
+
+}
